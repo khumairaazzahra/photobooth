@@ -4,25 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LDR Virtual Photobooth</title>
-    <!-- Tailwind CSS untuk styling cepat -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- PeerJS untuk koneksi P2P WebRTC -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <style>
-        /* CSS tambahan untuk animasi flash kamera */
         .flash { animation: flashAnim 0.5s ease-out; }
         @keyframes flashAnim {
             0% { background-color: white; opacity: 1; }
             100% { background-color: transparent; opacity: 0; }
         }
+        /* Transisi halus saat mirror di-toggle */
+        video { transition: transform 0.3s ease; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 font-sans relative">
     
-    <!-- Animasi Flash Layar (Hidden by default) -->
     <div id="flash-overlay" class="fixed inset-0 pointer-events-none z-50 hidden"></div>
 
-    <!-- Countdown Timer -->
     <div id="countdown" class="fixed inset-0 flex items-center justify-center text-9xl font-bold text-white drop-shadow-lg z-40 hidden" style="text-shadow: 2px 2px 10px rgba(0,0,0,0.5);">
         3
     </div>
@@ -33,7 +30,7 @@
             <p class="text-gray-500 text-sm mt-2">Bikin photostrip bareng dari lokasi berbeda</p>
         </header>
 
-        <!-- PANEL LOBBY (Buat / Join Room) -->
+        <!-- PANEL LOBBY -->
         <div id="lobby-panel" class="bg-white p-8 rounded-2xl shadow-sm text-center max-w-md mx-auto">
             <div id="setup-controls">
                 <button id="btn-create-room" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg mb-4 transition">
@@ -43,7 +40,6 @@
                 <p class="text-sm text-gray-600 mb-2">Punya link undangan? Buka link tersebut langsung di browser kamu.</p>
             </div>
             
-            <!-- Muncul setelah Host membuat room -->
             <div id="invite-section" class="hidden">
                 <p class="font-semibold mb-2 text-indigo-600">Room Berhasil Dibuat!</p>
                 <p class="text-sm text-gray-600 mb-2">Kirim link ini ke teman/pasanganmu:</p>
@@ -52,14 +48,22 @@
             </div>
         </div>
 
-        <!-- PANEL STUDIO (Video Grid & Tombol Jepret) -->
+        <!-- PANEL STUDIO -->
         <div id="studio-panel" class="hidden flex flex-col items-center">
-            <!-- Grid Video dinamis (bisa 2, 3, 4 orang dst) -->
+            
+            <!-- Tombol Pengaturan Tambahan (Mirror) -->
+            <div class="mb-4 flex gap-3">
+                <button id="btn-mirror" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-2 px-4 rounded-lg shadow-sm transition">
+                    🪞 Mirror: ON
+                </button>
+            </div>
+
+            <!-- Grid Video (Sekarang ukurannya Landscape) -->
             <div id="video-grid" class="flex flex-wrap justify-center gap-4 mb-8">
                 <!-- Video akan di-inject JS ke sini -->
             </div>
 
-            <!-- Hanya Host yang bisa jepret -->
+            <!-- Tombol Jepret -->
             <button id="btn-snap" class="hidden bg-pink-500 hover:bg-pink-600 text-white font-bold py-4 px-10 rounded-full shadow-lg transition transform hover:scale-105">
                 📸 Jepret Sekarang!
             </button>
@@ -72,15 +76,19 @@
             <div class="bg-white p-4 shadow-xl rounded" style="width: fit-content;">
                 <img id="final-image" src="" alt="Photostrip" class="max-w-xs md:max-w-md border border-gray-200">
             </div>
-            <a id="btn-download" href="#" download="ldr-photostrip.png" class="mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow transition">
-                ⬇️ Download Foto
-            </a>
+            <div class="flex gap-4 mt-6">
+                <button id="btn-retake" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-6 rounded-lg shadow transition">
+                    🔄 Foto Ulang
+                </button>
+                <a id="btn-download" href="#" download="ldr-photostrip.png" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow transition">
+                    ⬇️ Download Foto
+                </a>
+            </div>
         </div>
         
-        <!-- Canvas Tersembunyi untuk Image Processing -->
         <canvas id="canvas" class="hidden"></canvas>
     </main>
 
-    <script src="app.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

@@ -3,8 +3,8 @@ let myPeer;
 let myStream;
 let isHost = false;
 let roomID = null;
-const peers = {}; // Menyimpan koneksi media (video)
-const dataConnections = []; // Menyimpan koneksi data (pesan/gambar)
+let isMirrored = true; // Default kamera depan biasanya mirror
+const dataConnections = []; 
 
 // DOM Elements
 const lobbyPanel = document.getElementById('lobby-panel');
@@ -18,34 +18,51 @@ const btnSnap = document.getElementById('btn-snap');
 const countdownEl = document.getElementById('countdown');
 const flashOverlay = document.getElementById('flash-overlay');
 const waitingMsg = document.getElementById('waiting-msg');
+const btnMirror = document.getElementById('btn-mirror');
+const btnRetake = document.getElementById('btn-retake');
 
-// 1. Cek apakah di URL ada ?room=xxx
+// --- FITUR MIRROR ---
+btnMirror.addEventListener('click', () => {
+    isMirrored = !isMirrored;
+    btnMirror.innerText = isMirrored ? '🪞 Mirror: ON' : '🪞 Mirror: OFF';
+    
+    // Terapkan efek CSS mirror ke semua tag video di layar
+    document.querySelectorAll('video').forEach(vid => {
+        vid.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+    });
+});
+
 const urlParams = new URLSearchParams(window.location.search);
 const roomParam = urlParams.get('room');
 
 if (roomParam) {
-    // Sebagai Guest
     roomID = roomParam;
     initKamera(() => joinRoom(roomID));
 } else {
-    // Sebagai Host (belum bikin room)
     document.getElementById('btn-create-room').addEventListener('click', () => {
         roomID = 'ldr-' + Math.random().toString(36).substr(2, 6);
         initKamera(() => createRoom(roomID));
     });
 }
 
-// 2. Akses Kamera
+// 2. Akses Kamera (Minta mode Landscape 16:9 atau 4:3)
 function initKamera(onSuccess) {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-        .then(stream => {
-            myStream = stream;
-            tampilkanVideo(stream, 'local');
-            lobbyPanel.classList.add('hidden');
-            studioPanel.classList.remove('hidden');
-            onSuccess();
-        })
-        .catch(err => alert("Gagal akses kamera. Pastikan browser memberi izin! Error: " + err));
+    navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            width: { ideal: 1280 }, // Memaksa format landscape
+            height: { ideal: 720 },
+            facingMode: "user" 
+        }, 
+        audio: false 
+    })
+    .then(stream => {
+        myStream = stream;
+        tampilkanVideo(stream, 'local');
+        lobbyPanel.classList.add('hidden');
+        studioPanel.classList.remove('hidden');
+        onSuccess();
+    })
+    .catch(err => alert("Gagal akses kamera. Pastikan browser memberi izin! Error: " + err));
 }
 
 // 3. Menampilkan Video ke Grid HTML
@@ -54,34 +71,42 @@ function tampilkanVideo(stream, userId) {
     video.srcObject = stream;
     video.autoplay = true;
     video.playsInline = true;
-    video.className = 'w-48 h-64 md:w-64 md:h-80 object-cover bg-black rounded-lg shadow-md border-4 border-white';
+    
+    // CSS Class diubah agar berukuran Landscape (Mendatar)
+    video.className = 'w-[320px] h-[240px] md:w-[480px] md:h-[360px] object-cover bg-black rounded-lg shadow-md border-4 border-white';
     video.id = `video-${userId}`;
     
-    // Mute video sendiri agar tidak echo
+    // Terapkan status mirror awal
+    video.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+    
     if(userId === 'local') video.muted = true; 
     
     videoGrid.appendChild(video);
 }
 
-// 4. Logika Host (Membuat Room)
+// 4. Logika Host
 function createRoom(id) {
     isHost = true;
-    myPeer = new Peer(id); // Daftarkan ID unik ke PeerJS Server
+    myPeer = new Peer(id, { host: '0.peerjs.com', port: 443, path: '/' }); 
+
+    myPeer.on('error', (err) => {
+        console.error('PeerJS Error:', err);
+        alert('Gagal terhubung ke server koneksi: ' + err.type);
+    });
 
     myPeer.on('open', (id) => {
-        lobbyPanel.classList.remove('hidden'); // Tampilkan lagi panel lobby sebentar
+        lobbyPanel.classList.remove('hidden'); 
         document.getElementById('setup-controls').classList.add('hidden');
         inviteSection.classList.remove('hidden');
         
-        // Buat link invite berdasarkan URL saat ini
         const link = window.location.href.split('?')[0] + '?room=' + id;
         inviteLink.value = link;
-        btnSnap.classList.remove('hidden'); // Munculkan tombol jepret untuk host
+        btnSnap.classList.remove('hidden'); 
+        btnRetake.classList.remove('hidden'); // Munculkan tombol retake untuk host
     });
 
-    // Menerima panggilan video dari Guest
     myPeer.on('call', (call) => {
-        call.answer(myStream); // Jawab dengan kamera Host
+        call.answer(myStream); 
         call.on('stream', (userVideoStream) => {
             if(!document.getElementById(`video-${call.peer}`)) {
                 tampilkanVideo(userVideoStream, call.peer);
@@ -89,20 +114,23 @@ function createRoom(id) {
         });
     });
 
-    // Menerima koneksi data (untuk ngirim aba-aba & foto hasil)
     myPeer.on('connection', (conn) => {
         dataConnections.push(conn);
     });
 }
 
-// 5. Logika Guest (Join Room)
+// 5. Logika Guest
 function joinRoom(id) {
-    myPeer = new Peer();
+    myPeer = new Peer({ host: '0.peerjs.com', port: 443, path: '/' });
+
+    myPeer.on('error', (err) => {
+        console.error('PeerJS Error:', err);
+        alert('Gagal bergabung ke room: ' + err.type);
+    });
     
     myPeer.on('open', () => {
-        waitingMsg.classList.remove('hidden'); // Guest nunggu host ngeklik tombol
+        waitingMsg.classList.remove('hidden'); 
 
-        // A. Panggil Host untuk tukeran video
         const call = myPeer.call(id, myStream);
         call.on('stream', (hostVideoStream) => {
             if(!document.getElementById(`video-${id}`)) {
@@ -110,27 +138,23 @@ function joinRoom(id) {
             }
         });
 
-        // B. Buka jalur data untuk terima foto dari Host
         const conn = myPeer.connect(id);
         conn.on('data', (data) => {
             if(data.type === 'START_COUNTDOWN') {
                 jalankanAnimasiCountdown();
             } else if (data.type === 'PHOTO_RESULT') {
                 tampilkanHasilFoto(data.image);
+            } else if (data.type === 'RETAKE_PHOTO') {
+                resetKeStudio();
             }
         });
     });
 }
 
-// 6. Tombol Jepret (Hanya Host)
+// 6. Tombol Jepret
 btnSnap.addEventListener('click', () => {
-    // Beritahu semua Guest kalau hitung mundur dimulai
     dataConnections.forEach(conn => conn.send({ type: 'START_COUNTDOWN' }));
-    
-    // Jalankan timer di layar Host sendiri
-    jalankanAnimasiCountdown(() => {
-        ambilFotoDanGabung(); // Ambil foto pas angka 0
-    });
+    jalankanAnimasiCountdown(() => { ambilFotoDanGabung(); });
 });
 
 // 7. Animasi Hitung Mundur
@@ -161,32 +185,39 @@ function efekFlash() {
     }, 500);
 }
 
-// 8. Image Processing (Stitching menggunakan Canvas) - Dijalankan Host
+// 8. Image Processing (Stitching menggunakan Canvas untuk Landscape)
 function ambilFotoDanGabung() {
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Ambil semua elemen video yang sedang tayang di grid
     const videos = document.querySelectorAll('video');
     
-    // Set ukuran photostrip (Gaya vertikal, panjang ke bawah)
     const padding = 20;
-    const videoWidth = 400;
-    const videoHeight = 300;
+    // Ukuran disesuaikan untuk Landscape
+    const videoWidth = 480;
+    const videoHeight = 360; 
     
     canvas.width = videoWidth + (padding * 2);
-    canvas.height = (videoHeight * videos.length) + (padding * (videos.length + 1)) + 80; // +80 untuk area teks bawah
+    canvas.height = (videoHeight * videos.length) + (padding * (videos.length + 1)) + 80;
 
-    // Background Putih (Kertas Polaroid)
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Loop semua video dan "cetak" ke canvas
     let currentY = padding;
     videos.forEach((vid) => {
-        ctx.drawImage(vid, padding, currentY, videoWidth, videoHeight);
         
-        // Kasih border/outline halus di tiap foto
+        // Logika untuk membalik gambar (Mirror) saat dirender ke hasil Canvas
+        if (isMirrored) {
+            ctx.save(); // Simpan state canvas saat ini
+            ctx.translate(padding + videoWidth, currentY); // Geser titik sumbu ke sisi kanan foto
+            ctx.scale(-1, 1); // Balik sumbu X (Horizontal)
+            ctx.drawImage(vid, 0, 0, videoWidth, videoHeight); // Gambar video yang sudah dibalik
+            ctx.restore(); // Kembalikan sumbu canvas ke normal
+        } else {
+            // Gambar normal tanpa dibalik
+            ctx.drawImage(vid, padding, currentY, videoWidth, videoHeight);
+        }
+        
         ctx.strokeStyle = '#E2E8F0';
         ctx.lineWidth = 2;
         ctx.strokeRect(padding, currentY, videoWidth, videoHeight);
@@ -194,19 +225,14 @@ function ambilFotoDanGabung() {
         currentY += videoHeight + padding;
     });
 
-    // Tambahkan teks di bagian bawah
     ctx.fillStyle = '#333333';
     ctx.font = 'bold 24px Arial';
     ctx.textAlign = 'center';
     ctx.fillText('LDR Photobooth 🤍', canvas.width / 2, canvas.height - 30);
 
-    // Convert Canvas jadi Base64 Image
     const photoDataUrl = canvas.toDataURL('image/png');
-
-    // Tampilkan di Host
     tampilkanHasilFoto(photoDataUrl);
 
-    // Kirim gambar jadi ke semua Guest
     dataConnections.forEach(conn => {
         conn.send({ type: 'PHOTO_RESULT', image: photoDataUrl });
     });
@@ -214,11 +240,25 @@ function ambilFotoDanGabung() {
 
 // 9. Tampilkan Hasil Akhir
 function tampilkanHasilFoto(imageUrl) {
-    studioPanel.classList.add('hidden'); // Sembunyikan kamera
+    studioPanel.classList.add('hidden'); 
     resultPanel.classList.remove('hidden');
     
     finalImage.src = imageUrl;
     document.getElementById('btn-download').href = imageUrl;
+}
+
+// 10. Fitur Foto Ulang (Retake)
+btnRetake.addEventListener('click', () => {
+    resetKeStudio();
+    // Beritahu guest untuk kembali ke layar studio
+    dataConnections.forEach(conn => {
+        conn.send({ type: 'RETAKE_PHOTO' });
+    });
+});
+
+function resetKeStudio() {
+    resultPanel.classList.add('hidden');
+    studioPanel.classList.remove('hidden');
 }
 
 // Utility: Copy Link
