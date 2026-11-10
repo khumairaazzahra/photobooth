@@ -45,11 +45,11 @@ if (roomParam) {
     });
 }
 
-// 2. Akses Kamera (Minta mode Landscape 16:9 atau 4:3)
+// 2. Akses Kamera (Minta mode Landscape)
 function initKamera(onSuccess) {
     navigator.mediaDevices.getUserMedia({ 
         video: { 
-            width: { ideal: 1280 }, // Memaksa format landscape
+            width: { ideal: 1280 }, 
             height: { ideal: 720 },
             facingMode: "user" 
         }, 
@@ -72,16 +72,13 @@ function tampilkanVideo(stream, userId) {
     video.autoplay = true;
     video.playsInline = true;
     
-    // CSS Class diubah agar berukuran Landscape (Mendatar)
     video.className = 'w-[320px] h-[240px] md:w-[480px] md:h-[360px] object-cover bg-black rounded-lg shadow-md border-4 border-white';
     video.id = `video-${userId}`;
     
-    // Terapkan status mirror awal
     video.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
     
     if(userId === 'local') video.muted = true; 
     
-    // Perbaikan layar hitam: Paksa video memutar setelah metadata termuat
     video.onloadedmetadata = () => {
         video.play().catch(err => console.error("Video play error:", err));
     };
@@ -107,7 +104,7 @@ function createRoom(id) {
         const link = window.location.href.split('?')[0] + '?room=' + id;
         inviteLink.value = link;
         btnSnap.classList.remove('hidden'); 
-        btnRetake.classList.remove('hidden'); // Munculkan tombol retake untuk host
+        btnRetake.classList.remove('hidden'); 
     });
 
     myPeer.on('call', (call) => {
@@ -117,10 +114,29 @@ function createRoom(id) {
                 tampilkanVideo(userVideoStream, call.peer);
             }
         });
+
+        // Hapus video jika panggilan terputus
+        call.on('close', () => {
+            const vid = document.getElementById(`video-${call.peer}`);
+            if (vid) vid.remove();
+        });
     });
 
     myPeer.on('connection', (conn) => {
         dataConnections.push(conn);
+
+        // Deteksi jika teman (guest) keluar dari link
+        conn.on('close', () => {
+            // Hapus video teman yang keluar dari layar
+            const vid = document.getElementById(`video-${conn.peer}`);
+            if (vid) vid.remove();
+            
+            // Hapus data koneksinya agar sistem tidak error saat tombol jepret ditekan
+            const index = dataConnections.indexOf(conn);
+            if (index > -1) {
+                dataConnections.splice(index, 1);
+            }
+        });
     });
 }
 
@@ -153,11 +169,23 @@ function joinRoom(id) {
                 resetKeStudio();
             }
         });
+
+        // Deteksi jika Host menutup link
+        conn.on('close', () => {
+            alert('Host telah menutup Photobooth. Kamu akan dikembalikan ke halaman utama.');
+            window.location.href = window.location.href.split('?')[0];
+        });
     });
 }
 
 // 6. Tombol Jepret
 btnSnap.addEventListener('click', () => {
+    // Pastikan masih ada teman di room sebelum menjepret
+    if(dataConnections.length === 0) {
+        alert("Belum ada teman yang bergabung di room ini.");
+        return;
+    }
+
     dataConnections.forEach(conn => conn.send({ type: 'START_COUNTDOWN' }));
     jalankanAnimasiCountdown(() => { ambilFotoDanGabung(); });
 });
@@ -198,7 +226,6 @@ function ambilFotoDanGabung() {
     const videos = document.querySelectorAll('video');
     
     const padding = 20;
-    // Ukuran disesuaikan untuk Landscape
     const videoWidth = 480;
     const videoHeight = 360; 
     
@@ -210,16 +237,13 @@ function ambilFotoDanGabung() {
 
     let currentY = padding;
     videos.forEach((vid) => {
-        
-        // Logika untuk membalik gambar (Mirror) saat dirender ke hasil Canvas
         if (isMirrored) {
-            ctx.save(); // Simpan state canvas saat ini
-            ctx.translate(padding + videoWidth, currentY); // Geser titik sumbu ke sisi kanan foto
-            ctx.scale(-1, 1); // Balik sumbu X (Horizontal)
-            ctx.drawImage(vid, 0, 0, videoWidth, videoHeight); // Gambar video yang sudah dibalik
-            ctx.restore(); // Kembalikan sumbu canvas ke normal
+            ctx.save(); 
+            ctx.translate(padding + videoWidth, currentY); 
+            ctx.scale(-1, 1); 
+            ctx.drawImage(vid, 0, 0, videoWidth, videoHeight); 
+            ctx.restore(); 
         } else {
-            // Gambar normal tanpa dibalik
             ctx.drawImage(vid, padding, currentY, videoWidth, videoHeight);
         }
         
@@ -255,7 +279,6 @@ function tampilkanHasilFoto(imageUrl) {
 // 10. Fitur Foto Ulang (Retake)
 btnRetake.addEventListener('click', () => {
     resetKeStudio();
-    // Beritahu guest untuk kembali ke layar studio
     dataConnections.forEach(conn => {
         conn.send({ type: 'RETAKE_PHOTO' });
     });
