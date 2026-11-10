@@ -3,8 +3,22 @@ let myPeer;
 let myStream;
 let isHost = false;
 let roomID = null;
-let isMirrored = true; // Default kamera depan biasanya mirror
+let isMirrored = true;
 const dataConnections = []; 
+
+// Konfigurasi STUN Server Publik (Gratis dari Google) agar video tidak blank hitam
+const peerConfig = {
+    host: '0.peerjs.com', 
+    port: 443, 
+    path: '/',
+    config: {
+        'iceServers': [
+            { url: 'stun:stun.l.google.com:19302' },
+            { url: 'stun:stun1.l.google.com:19302' },
+            { url: 'stun:stun2.l.google.com:19302' }
+        ]
+    }
+};
 
 // DOM Elements
 const lobbyPanel = document.getElementById('lobby-panel');
@@ -26,7 +40,6 @@ btnMirror.addEventListener('click', () => {
     isMirrored = !isMirrored;
     btnMirror.innerText = isMirrored ? '🪞 Mirror: ON' : '🪞 Mirror: OFF';
     
-    // Terapkan efek CSS mirror ke semua tag video di layar
     document.querySelectorAll('video').forEach(vid => {
         vid.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
     });
@@ -45,7 +58,7 @@ if (roomParam) {
     });
 }
 
-// 2. Akses Kamera (Minta mode Landscape)
+// 2. Akses Kamera
 function initKamera(onSuccess) {
     navigator.mediaDevices.getUserMedia({ 
         video: { 
@@ -79,6 +92,7 @@ function tampilkanVideo(stream, userId) {
     
     if(userId === 'local') video.muted = true; 
     
+    // Paksa play saat metadata termuat
     video.onloadedmetadata = () => {
         video.play().catch(err => console.error("Video play error:", err));
     };
@@ -89,7 +103,7 @@ function tampilkanVideo(stream, userId) {
 // 4. Logika Host
 function createRoom(id) {
     isHost = true;
-    myPeer = new Peer(id, { host: '0.peerjs.com', port: 443, path: '/' }); 
+    myPeer = new Peer(id, peerConfig); 
 
     myPeer.on('error', (err) => {
         console.error('PeerJS Error:', err);
@@ -115,7 +129,6 @@ function createRoom(id) {
             }
         });
 
-        // Hapus video jika panggilan terputus
         call.on('close', () => {
             const vid = document.getElementById(`video-${call.peer}`);
             if (vid) vid.remove();
@@ -125,13 +138,10 @@ function createRoom(id) {
     myPeer.on('connection', (conn) => {
         dataConnections.push(conn);
 
-        // Deteksi jika teman (guest) keluar dari link
         conn.on('close', () => {
-            // Hapus video teman yang keluar dari layar
             const vid = document.getElementById(`video-${conn.peer}`);
             if (vid) vid.remove();
             
-            // Hapus data koneksinya agar sistem tidak error saat tombol jepret ditekan
             const index = dataConnections.indexOf(conn);
             if (index > -1) {
                 dataConnections.splice(index, 1);
@@ -142,7 +152,7 @@ function createRoom(id) {
 
 // 5. Logika Guest
 function joinRoom(id) {
-    myPeer = new Peer({ host: '0.peerjs.com', port: 443, path: '/' });
+    myPeer = new Peer(peerConfig);
 
     myPeer.on('error', (err) => {
         console.error('PeerJS Error:', err);
@@ -170,7 +180,6 @@ function joinRoom(id) {
             }
         });
 
-        // Deteksi jika Host menutup link
         conn.on('close', () => {
             alert('Host telah menutup Photobooth. Kamu akan dikembalikan ke halaman utama.');
             window.location.href = window.location.href.split('?')[0];
@@ -180,7 +189,6 @@ function joinRoom(id) {
 
 // 6. Tombol Jepret
 btnSnap.addEventListener('click', () => {
-    // Pastikan masih ada teman di room sebelum menjepret
     if(dataConnections.length === 0) {
         alert("Belum ada teman yang bergabung di room ini.");
         return;
@@ -218,7 +226,7 @@ function efekFlash() {
     }, 500);
 }
 
-// 8. Image Processing (Stitching menggunakan Canvas untuk Landscape)
+// 8. Image Processing
 function ambilFotoDanGabung() {
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
