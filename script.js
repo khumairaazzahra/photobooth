@@ -6,7 +6,7 @@ let roomID = null;
 let isMirrored = true;
 const dataConnections = []; 
 
-// Konfigurasi STUN Server Publik (Gratis dari Google) agar video tidak blank hitam
+// Konfigurasi STUN Server Publik agar video tidak blank hitam
 const peerConfig = {
     host: '0.peerjs.com', 
     port: 443, 
@@ -58,14 +58,10 @@ if (roomParam) {
     });
 }
 
-// 2. Akses Kamera
+// 2. Akses Kamera (Resolusi fleksibel, menghapus paksaan HD)
 function initKamera(onSuccess) {
     navigator.mediaDevices.getUserMedia({ 
-        video: { 
-            width: { ideal: 1280 }, 
-            height: { ideal: 720 },
-            facingMode: "user" 
-        }, 
+        video: { facingMode: "user" }, 
         audio: false 
     })
     .then(stream => {
@@ -85,15 +81,15 @@ function tampilkanVideo(stream, userId) {
     video.autoplay = true;
     video.playsInline = true;
     
+    // Bypass pemblokiran Autoplay browser dengan mem-mute semua video (Host & Guest)
+    video.muted = true; 
+    
     video.className = 'w-[320px] h-[240px] md:w-[480px] md:h-[360px] object-cover bg-black rounded-lg shadow-md border-4 border-white';
     video.id = `video-${userId}`;
     
     video.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
     
-    if(userId === 'local') video.muted = true; 
-    
-    // Paksa play saat metadata termuat
-    video.onloadedmetadata = () => {
+    video.onloadeddata = () => {
         video.play().catch(err => console.error("Video play error:", err));
     };
     
