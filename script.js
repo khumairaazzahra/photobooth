@@ -81,6 +81,11 @@ function tampilkanVideo(stream, userId) {
     
     if(userId === 'local') video.muted = true; 
     
+    // Perbaikan layar hitam: Paksa video memutar setelah metadata termuat
+    video.onloadedmetadata = () => {
+        video.play().catch(err => console.error("Video play error:", err));
+    };
+    
     videoGrid.appendChild(video);
 }
 
